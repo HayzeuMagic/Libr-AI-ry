@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from app.app import create_app
+from werkzeug.serving import run_simple
 
 load_dotenv()
 
