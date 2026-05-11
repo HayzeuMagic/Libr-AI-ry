@@ -14,6 +14,7 @@ from openai import OpenAI
 from books.models import Book
 from reservations.models import Reservation
 
+
 client = OpenAI(api_key=settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY"))
 
 
@@ -35,11 +36,43 @@ def parse_book_suggestion(reply: str):
     return None
 
 
+def get_book_stock_info(book):
+    """
+    Read stock fields based on your actual Book model.
+    Your books app uses:
+    - stock = total copies
+    - available_count = currently available copies
+    """
+    total_copies = getattr(book, "stock", None)
+    available_copies = getattr(book, "available_count", None)
+
+    return {
+        "total_copies": total_copies,
+        "available_copies": available_copies,
+        "is_available": (available_copies is not None and available_copies > 0),
+    }
+
+
+def serialize_book(book):
+    stock = get_book_stock_info(book)
+    return {
+        "id": book.id,
+        "title": book.title,
+        "author": book.author,
+        "genre": getattr(book, "genre", None),
+        "cover_url": getattr(book, "cover_url", None),
+        "available_copies": stock["available_copies"],
+        "total_copies": stock["total_copies"],
+        "is_available": stock["is_available"],
+    }
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def chat(request):
     user_message = request.data.get("message")
     history = request.data.get("history", [])
+
     if not user_message:
         return Response({"error": "Message is required"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -52,7 +85,7 @@ def chat(request):
         tl = text_lower
 
         has_student = "student" in tl or "students" in tl
-        has_borrow = "borrow" in tl  # borrowed/borrowing
+        has_borrow = "borrow" in tl
         has_overdue = "overdue" in tl
         has_email = "email" in tl or "e-mail" in tl
 
@@ -85,7 +118,7 @@ def chat(request):
                     for r in items:
                         lines.append(
                             f"- {r.book.title} "
-                            f"({r.borrow_date.date()}  |  {r.due_date.date()}  |  {r.status})"
+                            f"({r.borrow_date.date()} | {r.due_date.date()} | {r.status})"
                         )
                 admin_reply = "\n".join(lines)
 
@@ -115,7 +148,7 @@ def chat(request):
                     for r in items:
                         lines.append(
                             f"- {r.book.title} "
-                            f"({r.borrow_date.date()}  |  {r.due_date.date()}  |  {r.status})"
+                            f"({r.borrow_date.date()} | {r.due_date.date()} | {r.status})"
                         )
                 admin_reply = "\n".join(lines)
 
@@ -156,7 +189,7 @@ def chat(request):
                     for r in items:
                         recipient_lines.append(
                             f"- {r.book.title} "
-                            f"({r.borrow_date.date()}  |  {r.due_date.date()}  |  {r.status})"
+                            f"({r.borrow_date.date()} | {r.due_date.date()} | {r.status})"
                         )
 
                 admin_reply = (
@@ -168,7 +201,6 @@ def chat(request):
                     + "\n".join(recipient_lines)
                 )
 
-   
     if admin_reply is not None:
         return Response({
             "reply": admin_reply,
@@ -177,7 +209,7 @@ def chat(request):
 
     # ------- INTENT DETECTION -------
     is_recommend_request = any(
-        w in text_lower for w in ["recommend", "suggest", "pick a book"]
+        w in text_lower for w in ["recommend", "suggest", "pick a book", "borrow"]
     )
     is_info_request = any(
         p in text_lower
@@ -203,25 +235,29 @@ def chat(request):
     by_match = re.search(r'\bby\s+([A-Za-z][A-Za-z\s\.\-]+)', user_message, re.IGNORECASE)
     if by_match and is_recommend_request:
         author_filter = by_match.group(1).strip()
-        print("👤 AUTHOR FILTER DETECTED:", repr(author_filter))
 
-    # ------- 1) CURRENTLY BORROWED (context only) -------
+    # ------- USER BORROWED CONTEXT -------
     try:
         borrowed_reservations = Reservation.objects.filter(
             user=user,
             status='borrowed'
-        ).select_related('book')[:5]
-        borrowed_summary = [f"- {r.book.title} by {r.book.author}" for r in borrowed_reservations]
+        ).select_related('book')[:10]
+
+        borrowed_books = [r.book for r in borrowed_reservations]
+        borrowed_ids = [b.id for b in borrowed_books]
+
+        borrowed_summary = [f"- {b.title} by {b.author}" for b in borrowed_books]
         user_books_context = (
             "Your currently borrowed books:\n" + "\n".join(borrowed_summary)
-            if borrowed_reservations.exists()
+            if borrowed_summary
             else "You have no currently borrowed books."
         )
     except Exception as e:
         print("❌ Borrowed books error:", e)
+        borrowed_ids = []
         user_books_context = "Unable to fetch your borrowed books."
 
-    # ------- 2) TOPIC MATCH – search DB for matching books -------
+    # ------- TOPIC / DB SEARCH -------
     try:
         raw = user_message.strip()
         lower = raw.lower()
@@ -235,7 +271,10 @@ def chat(request):
                 topic_only = None
 
         q = topic_only or raw
-        print("🔎 TOPIC QUERY:", repr(q))
+
+        # Remove common borrow/request phrases so title matching works better
+        q = re.sub(r'\b(i want to|can i|please|borrow|reserve|find|get me|recommend|suggest)\b', ' ', q, flags=re.IGNORECASE)
+        q = re.sub(r'\s+', ' ', q).strip().strip('"')
 
         topic_books = Book.objects.none()
 
@@ -243,7 +282,6 @@ def chat(request):
             author_qs = Book.objects.filter(author__icontains=author_filter)
             if author_qs.exists():
                 topic_books = author_qs
-                print("✅ AUTHOR MATCHES:", author_qs.count())
             else:
                 topic_books = Book.objects.filter(
                     Q(title__icontains=q) |
@@ -258,8 +296,7 @@ def chat(request):
             )
 
         if not topic_books.exists():
-            words = [w.rstrip('?.!,') for w in q.split() if w.strip()]
-            print("🔎 TOPIC WORDS:", words)
+            words = [w.rstrip('?.!,"') for w in q.split() if w.strip()]
             for w in words:
                 topic_books = Book.objects.filter(
                     Q(title__icontains=w) |
@@ -267,31 +304,50 @@ def chat(request):
                     Q(genre__icontains=w)
                 )
                 if topic_books.exists():
-                    print("✅ MATCH ON WORD:", w, "COUNT:", topic_books.count())
                     break
+
     except Exception as e:
         print("❌ Topic search error:", e)
         topic_books = Book.objects.none()
 
-    if topic_books.exists():
-        topic_books = topic_books[:10]
-        has_topic_match = True
-        topic_lines = [
-            f"- \"{b.title}\" by {b.author} (genre: {b.genre})"
-            for b in topic_books
-        ]
+    # ------- ENRICH BOOKS WITH AVAILABILITY -------
+    matched_books = list(topic_books[:10]) if topic_books.exists() else []
+    borrowable_books = []
+
+    for b in matched_books:
+        if b.id in borrowed_ids:
+            continue
+
+        stock = get_book_stock_info(b)
+        if stock["is_available"]:
+            borrowable_books.append(b)
+
+    if matched_books:
+        topic_lines = []
+        for b in matched_books:
+            stock = get_book_stock_info(b)
+            available_text = "unknown"
+            if stock["available_copies"] is not None and stock["total_copies"] is not None:
+                available_text = f"{stock['available_copies']}/{stock['total_copies']}"
+            elif stock["available_copies"] is not None:
+                available_text = str(stock["available_copies"])
+
+            topic_lines.append(
+                f'- "{b.title}" by {b.author} '
+                f'(genre: {getattr(b, "genre", "")}, available: {available_text})'
+            )
+
         topic_context = (
-            "Books in this library matching the topic (by title, author, or genre):\n"
+            "Books in this library matching the topic (database results):\n"
             + "\n".join(topic_lines)
         )
     else:
-        has_topic_match = False
         topic_context = (
             "No library books were found that directly match this topic, "
             "but you may still recommend books using your general knowledge."
         )
 
-    # ------- 2b) FULL GENRE LIST FROM DB -------
+    # ------- FULL GENRE LIST -------
     try:
         genres_qs = (
             Book.objects
@@ -309,10 +365,55 @@ def chat(request):
         )
     except Exception as e:
         print("❌ Genre list error:", e)
-        all_genres = []
         genres_text = "Unable to retrieve genre list from the database."
 
-    # ------- 3) SYSTEM PROMPT -------
+    # ------- FAST PATH FOR RECOMMENDATION / BORROW FROM DB -------
+    if is_recommend_request and borrowable_books:
+        primary_book = borrowable_books[0]
+        book_suggested = serialize_book(primary_book)
+
+        other_lines = [
+            f'- "{b.title}" by {b.author}'
+            for b in borrowable_books[1:4]
+        ]
+
+        reply_lines = [
+            f'"{primary_book.title}" by {primary_book.author}.',
+            "This book is available in the library and can be borrowed."
+        ]
+
+        if other_lines:
+            reply_lines.append("")
+            reply_lines.append("Other available books you may like:")
+            reply_lines.extend(other_lines)
+
+        return Response({
+            "reply": "\n".join(reply_lines),
+            "book_suggested": book_suggested,
+        })
+
+    # ------- IF MATCHED BUT ALL COPIES UNAVAILABLE -------
+    if is_recommend_request and matched_books and not borrowable_books:
+        primary_book = matched_books[0]
+        stock = get_book_stock_info(primary_book)
+        availability_text = "currently unavailable"
+        if stock["available_copies"] is not None and stock["total_copies"] is not None:
+            availability_text = (
+                f'currently unavailable ({stock["available_copies"]}/{stock["total_copies"]} available)'
+            )
+
+        return Response({
+            "reply": (
+                f'"{primary_book.title}" by {primary_book.author}.\n'
+                f'This book exists in the library but is {availability_text}.'
+            ),
+            "book_suggested": {
+                **serialize_book(primary_book),
+                "is_available": False,
+            },
+        })
+
+    # ------- SYSTEM PROMPT -------
     system_prompt = (
         f"{user_books_context}\n\n"
         f"{topic_context}\n\n"
@@ -320,30 +421,31 @@ def chat(request):
         "ROLE:\n"
         "- You are a librarian for THIS library.\n\n"
         "INTENT HANDLING:\n"
-        "- If the user asks to RECOMMEND or SUGGEST a book, treat it as a RECOMMENDATION REQUEST.\n"
+        "- If the user asks to RECOMMEND, SUGGEST, or BORROW a book, treat it as a RECOMMENDATION REQUEST.\n"
         "- If the user asks what a book is about, or about an author, treat it as an INFORMATION QUESTION.\n"
         "- If the user asks to recommend a book BY a specific author, treat it as a RECOMMENDATION REQUEST FILTERED BY THAT AUTHOR.\n\n"
         "RECOMMENDATION RULES:\n"
-        "- If the topic list above contains one or more library books, you MUST recommend one of those as your primary recommendation.\n"
-        "- If the topic list above is empty, you MUST still recommend at least one real book using your general knowledge, even if it is not in the library database.\n"
+        "- If the topic list above contains one or more library books, prefer library books.\n"
+        "- Never say a library book is unavailable unless the database context explicitly shows 0 available copies.\n"
+        "- If the topic list above is empty, you may recommend at least one real book using general knowledge.\n"
         "- Never respond that you cannot find any books on a topic. Always recommend something relevant.\n"
         "- For RECOMMENDATION REQUESTS FILTERED BY AUTHOR, prefer books whose author matches the requested author name when possible.\n"
         "- Your first line MUST be exactly one book in the format: \"Title\" by Author.\n"
-        "- For RECOMMEDATION REQUESTS, Do not suggest books that are already borrowed by the user.\n"
-        "- For RECOMMENDATION REQUESTS, If the user didn't specify a topic/genre ask the user first what topic/genre the user wants.\n"
-        "- After the first line, if you mention additional recommended books, list them as bullets, one per line, like:\n"
-        "  - \"Other Title\" by Other Author\n\n"
+        "- Do not suggest books already borrowed by the user.\n"
+        "- If the user didn't specify a topic or genre, ask the user what topic or genre they want.\n"
+        "- After the first line, you may add a short explanation.\n\n"
         "INFORMATION RULES:\n"
         "- For INFORMATION QUESTIONS, explain or summarize the book or author using your general knowledge.\n"
         "- If the user asks for the list or number of genres, use the genres list from the database above and report the actual genres and count.\n"
-        "- When asked about a book that is not in the data base, clarify to the user first that it is not available in our library. But give information about the book. \n"
+        "- When asked about a book that is not in the database, clarify first that it is not available in our library, but still give information about the book.\n"
         "- Do not treat information questions as new recommendations unless the user also asks for suggestions.\n"
     )
 
-    # ------- 4) BUILD MESSAGES WITH HISTORY -------
+    # ------- BUILD MESSAGES WITH HISTORY -------
     messages = [{"role": "system", "content": system_prompt}]
     for msg in history[-20:]:
-        messages.append({"role": msg["role"], "content": msg["content"]})
+        if "role" in msg and "content" in msg:
+            messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": user_message})
 
     try:
@@ -355,43 +457,34 @@ def chat(request):
         )
         bot_reply = completion.choices[0].message.content.strip()
 
-        # ------- 5) ENRICH RECOMMENDATION FOR BORROW/COVER CARD -------
+        # Only attach a suggested book if the AI's answer can be mapped to a DB book
         book_suggested = None
-        if is_recommend_request:
-            if has_topic_match:
-                book_suggested = parse_book_suggestion(bot_reply)
-                if book_suggested:
-                    try:
-                        title_hint = book_suggested["title"]
-                        author_hint = book_suggested["author"]
-                        book_obj = (
-                            Book.objects
-                            .filter(title__icontains=title_hint)
-                            .filter(author__icontains=author_hint.split()[0])
-                            .first()
-                        )
-                        if book_obj:
-                            book_suggested["id"] = book_obj.id
-                            book_suggested["title"] = book_obj.title
-                            book_suggested["author"] = book_obj.author
-                            book_suggested["cover_url"] = book_obj.cover_url
-                            book_suggested["genre"] = book_obj.genre
-                            bot_reply = f"\"{book_obj.title}\" by {book_obj.author}."
-                        else:
-                            book_suggested = None
-                    except Exception as e:
-                        print("❌ Book lookup for suggestion failed:", e)
-                        book_suggested = None
-            else:
-                book_suggested = None
+        parsed = parse_book_suggestion(bot_reply)
+        if parsed:
+            title_hint = parsed["title"]
+            author_hint = parsed["author"]
+
+            book_obj = (
+                Book.objects
+                .filter(title__icontains=title_hint)
+                .filter(author__icontains=author_hint.split()[0])
+                .first()
+            )
+
+            if book_obj:
+                book_suggested = serialize_book(book_obj)
 
         return Response({
             "reply": bot_reply,
             "book_suggested": book_suggested,
         })
+
     except Exception as e:
         print("❌ OPENAI ERROR:", repr(e))
-        return Response({"error": f"AI error: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(
+            {"error": f"AI error: {str(e)}"},
+            status=status.HTTP_502_BAD_GATEWAY
+        )
 
 
 @api_view(['GET'])
@@ -411,17 +504,14 @@ def related_books(request):
     except Book.DoesNotExist:
         return Response({"error": "Book not found"}, status=404)
 
-    qs = Book.objects.filter(
-        Q(genre__icontains=base.genre) |
-        Q(author__icontains=base.author)
-    ).exclude(id=base.id).distinct()[:5]
+    qs = (
+        Book.objects.filter(
+            Q(genre__iexact=base.genre) |
+            Q(author__icontains=base.author)
+        )
+        .exclude(id=base.id)
+        .distinct()[:5]
+    )
 
-    data = [{
-        "id": b.id,
-        "title": b.title,
-        "author": b.author,
-        "genre": b.genre,
-        "cover_url": getattr(b, "cover_url", None),
-    } for b in qs]
-
+    data = [serialize_book(b) for b in qs]
     return Response({"related": data})

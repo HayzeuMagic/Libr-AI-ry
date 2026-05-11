@@ -1,8 +1,10 @@
+import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 from app.app import create_app
 from werkzeug.serving import run_simple
-
 load_dotenv()
 
 config=os.getenv('FLASK_ENV') or 'development'

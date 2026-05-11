@@ -3,13 +3,9 @@ from pathlib import Path
 from datetime import timedelta
 import os
 
-# Base directory of the project
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY')
-
-# OpenAI key
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 
 DEBUG = True
@@ -30,6 +26,8 @@ INSTALLED_APPS = [
     'users',
     'books',
     'reservations',
+    'chatbot',
+    'analytics',
 ]
 
 AUTH_USER_MODEL = 'users.CustomUser'
@@ -63,6 +61,8 @@ TEMPLATES = [
     },
 ]
 
+WSGI_APPLICATION = 'library_management.wsgi.application'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
@@ -83,22 +83,54 @@ REST_FRAMEWORK = {
     ),
 }
 
-# SimpleJWT: make tokens last longer (e.g., 1 hour)
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Static files
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# CORS
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache_table',
+    }
+}
+
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
+    'http://127.0.0.1:3000',
     'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
+
+X_FRAME_OPTIONS = 'SAMEORIGIN'

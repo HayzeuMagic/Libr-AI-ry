@@ -1,21 +1,21 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { loginUser } from '../../services/auth';
 import '../../pages/Login.css';
-import {
-  FaFacebookF,
-  FaMicrosoft,
-  FaGithub,
-  FaLinkedinIn,
-  FaEye,
-  FaEyeSlash,
-} from 'react-icons/fa';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 function Login() {
-  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const navigate = useNavigate();
+
+  const hasToken = !!localStorage.getItem('accessToken');
+  const isAdminStored = localStorage.getItem('isAdmin') === 'true';
+
+  if (hasToken) {
+    return <Navigate to={isAdminStored ? '/admin' : '/chatbot'} replace />;
+  }
 
   const handleChange = (e) => {
     setCredentials({ ...credentials, [e.target.name]: e.target.value });
@@ -24,21 +24,20 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    try {
-      // loginUser should POST to /auth/login/ (via services/auth.js)
-      const user = await loginUser(credentials);
-      console.log('LOGIN USER:', user);
 
+    console.log('Login payload', credentials); // temporary debug log
+
+    try {
+      const user = await loginUser(credentials);
       const isAdmin = !!user?.is_staff;
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('isAdmin', isAdmin ? 'true' : 'false');
 
       if (isAdmin) {
-        navigate('/admin');
+        navigate('/admin', { replace: true });
       } else {
-        navigate('/user');
+        navigate('/chatbot', { replace: true });
       }
     } catch (error) {
+      console.error('Login error:', error);
       setLoginError('Username or Password is invalid.');
     }
   };
@@ -50,9 +49,9 @@ function Login() {
           <h2 className="form-title">Login</h2>
 
           <input
-            name="username"
+            name="email"
             type="text"
-            value={credentials.username}
+            value={credentials.email}
             onChange={handleChange}
             placeholder="Email"
             autoFocus
@@ -79,40 +78,12 @@ function Login() {
 
           <button type="submit">Login</button>
         </form>
-
-        <div className="socialLogin-section">
-          <div className="socialLogin-divider">
-            <span>Or Connect With</span>
-          </div>
-          <div className="socialLogin-icons">
-            <a href="https://www.facebook.com/r.php?entry_point=login" aria-label="Facebook">
-              <FaFacebookF />
-            </a>
-            <a href="https://account.microsoft.com/account" aria-label="Microsoft">
-              <FaMicrosoft />
-            </a>
-            <a href="https://github.com/login" aria-label="GitHub">
-              <FaGithub />
-            </a>
-            <a href="https://www.linkedin.com/login" aria-label="LinkedIn">
-              <FaLinkedinIn />
-            </a>
-          </div>
-          <div className="copyrightLogin">©2025</div>
-        </div>
       </div>
 
       <div className="login-right">
         <img src="/geng-logo.png" alt="Geng" className="big-logo" />
         <h2 className="login-title">Welcome!</h2>
-        <p>Don’t have an account yet?</p>
-        <button
-          className="login-button"
-          type="button"
-          onClick={() => navigate('/register')}
-        >
-          Register ➔
-        </button>
+        <p>Please login with your credentials.</p>
       </div>
     </div>
   );

@@ -4,15 +4,17 @@ const API_BASE = 'http://localhost:8000/api';
 
 const api = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
+  xsrfCookieName: 'csrftoken',
+  xsrfHeaderName: 'X-CSRFToken',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Attach JWT token to every request if present
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken'); // <-- match your login storage key
+    const token = localStorage.getItem('accessToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -31,17 +33,11 @@ export const deleteBook = (id) => api.delete(`/books/delete/${id}/`);
 export const borrowBook = (id) => api.post('/reservations/reserve/', { book_id: id });
 export const returnBook = (id) => api.post(`/reservations/return/${id}/`);
 
-// Auth-related API (no /auth/ prefix now)
-export const registerUser = (userData) => api.post('/register/', userData);
-export const loginUser = (credentials) => api.post('/login/', credentials);
-export const getCurrentUserProfile = () => api.get('/me/');
-export const changePassword = (data) => api.post('/change-password/', data);
-
 // Reservations API
 export const getReservationHistory = () => api.get('/reservations/history/');
 
-// Chatbot API (for completeness)
-export const sendChatMessage = (message) =>
-  api.post('/chatbot/chat/', { message });
+// Chatbot API
+export const sendChatMessage = (message, history = []) =>
+  api.post('/chatbot/chat/', { message, history });
 
 export default api;

@@ -1,117 +1,172 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
 import './Home.css';
 
-const Home = () => (
-  <div className="home-root">
-    {/* Centered Welcome text */}
-    <div className="welcome-text">
-     {/* <h1>Welcome to AI-Powered Library Management System</h1>
-      <p>
-        Register or login to manage books, reservations, and get AI recommendations.
-      </p>*/}
-    </div> 
+const rulesPage1 = [
+  'Use LIBR-AI-RY only for educational, research, and library-related purposes.',
+  'Search, borrow, reserve, and return library materials responsibly.',
+  'Borrowed books must be returned within 7 days from the borrowing date.',
+  'Books returned after the 7-day period will incur a penalty or late fee.',
+  'Users with unpaid penalties may be temporarily restricted from borrowing.',
+  'Lost or damaged books must be reported immediately and may require payment.',
+];
 
-    {/* Book Wrapper – Centers the book */}
-    <div className="book-wrapper">
-      <div className="cover">
-        <div className="book">
-          {/* Page 1 */}
-          <label htmlFor="page-1" className="book__page book__page--1">
-            <img src="/reading.jpg" alt="" />
-          </label>
+const rulesPage2 = [
+  'The AI assistant may help with searching, summarizing, and recommending resources.',
+  'Always verify AI-generated answers using trusted books, journals, or library sources.',
+  'Do not use AI for cheating, plagiarism, harmful content, or false information.',
+  'Respect copyright rules. Do not copy or distribute materials without permission.',
+  'Always cite books, articles, journals, and AI-assisted information properly.',
+  'Keep your account private. Do not share your login details with others.',
+  'Report incorrect book details, AI errors, or system issues to the administrator.',
+];
 
-          {/* Page 4: Content */}
-          <label htmlFor="page-2" className="book__page book__page--4">
-            <div className="page__content">
-              <h1 className="page__content-title">GENG A.I</h1>
+const TOTAL_SPREADS = 2;
 
-              <div className="page__content-blockquote">
-                <p className="page__content-blockquote-text">
-                  At GENG.AI, we believe in making knowledge more accessible by helping students, researchers, and readers find the right books faster and easier.
-                </p>
-                <p className="page__content-blockquote-text">
-                 With LIBR-AI-RY, we reduce the hassle and frustration of searching, save valuable time, and deliver personalized book recommendations.
-                </p>
-                <p className="page__content-blockquote-text">
-                 Our goal is to empower users to focus on learning and discovery, While ensuring even lesser-known books get the recognition they deserve.
-                </p>
+const Home = () => {
+  const [spread, setSpread]       = useState(1);
+  const [animating, setAnimating] = useState(false);
 
-                <span className="page__content-blockquote-reference">
-                  
-                </span>
-              </div>
+  const canGoBack = spread > 1;
+  const canGoNext = spread < TOTAL_SPREADS;
 
-              <div className="page__content-text">
-                <p>This study develops an AI tool that streamlines book searching, suggestions, and reservations through a library’s database.</p>
-                <p>Powered by Machine Learning and Large Language Models, it aims to improve efficiency over OPAC and support users in quickly finding relevant materials.</p>
-                <p>The project will be developed and tested at Lyceum of the Philippines University-Manila, with potential expansion to other libraries.</p>
-              </div>
+  const flipTo = (target) => {
+    if (animating || target === spread || target < 1 || target > TOTAL_SPREADS) return;
+    setAnimating(true);
+    setTimeout(() => {
+      setSpread(target);
+      setAnimating(false);
+    }, 425);
+  };
 
-              <div className="page__number">3</div>
+  return (
+    <div className="home-root">
+      <div className="book-wrapper">
+        <div className="book-scene">
+
+          {/* Flip Me hint — only on spread 1, anchored to book bottom-right */}
+          {spread === 1 && !animating && (
+            <div className="flip-hint" onClick={() => flipTo(2)}>
+              <svg className="flip-arrow" viewBox="0 0 80 80" fill="none">
+                <path
+                  d="M 72 12 C 60 14, 18 22, 10 62"
+                  stroke="#c9aa71" strokeWidth="4" strokeLinecap="round"
+                />
+                <polygon points="4,54 8,70 20,60" fill="#c9aa71" />
+              </svg>
+              <span className="flip-label">Flip me!</span>
             </div>
-          </label>
+          )}
 
-          {/* Radio Inputs */}
-          <input type="radio" name="page" id="page-1" />
-          <input type="radio" name="page" id="page-2" />
-
-          {/* Page 2: Book Info */}
-          <label className="book__page book__page--2">
-            <div className="book__page-front">
-              <div className="page__content">
-                <h1 className="page__content-book-title">Welcome to LIBR-A.I-RY</h1>
-                <h2 className="page__content-author">Library Management System</h2>
-
-                <p className="page__content-credits">
-                  Research by <span>Casimsiman</span>
-                  <span>Llanes</span>
-                  <span>Macapagal</span>
-                </p>
-                <p className="page__content-credits">
-                  Section <span>C331_CS</span>
-                </p>
-
-                <div className="page__content-copyright">
-                  <p>A.I Library System Management</p>
-                  <p>GENG A.I</p>
+          <div
+            className={`cover${
+              animating
+                ? spread === 1
+                  ? ' flipping-forward'
+                  : ' flipping-back'
+                : ''
+            }`}
+          >
+            {/* ── LEFT HALF — click goes to previous spread ── */}
+            <div
+              className={`book__page book__page--left${
+                canGoBack && !animating ? ' book__page--clickable book__page--clickable-left' : ''
+              }`}
+              onClick={() => canGoBack && !animating && flipTo(spread - 1)}
+            >
+              {spread === 1 ? (
+                <img src="/reading.jpg" alt="Scholar reading" className="book__img" />
+              ) : (
+                <div className="page__content page__content--rules">
+                  <h1 className="rules-page-title">Library Rules</h1>
+                  <div className="rules-page-subtitle">Part 1 of 2</div>
+                  <div className="rules-page-divider" />
+                  <ul className="rules-page-list">
+                    {rulesPage1.map((rule, i) => <li key={i}>{rule}</li>)}
+                  </ul>
+                  <div className="page__number">2</div>
                 </div>
-              </div>
+              )}
+
+              {/* Left hover arrow — only shown when there's a previous page */}
+              {canGoBack && !animating && (
+                <div className="page-hover-arrow page-hover-arrow--left">‹</div>
+              )}
             </div>
 
-            {/* Back Side */}
-            <div className="book__page-back">
-              <div className="page__content">
-                <h1 className="page__content-title">ABOUT US!</h1>
+            {/* Spine crease */}
+            <div className="book__spine" />
 
-                <table className="page__content-table">
-                  <tbody>
-                    <tr>
-                      <td>Project Manager/Backend Developer</td>
-                      <td>Macapagal, George </td>
-                      <td align="right"></td>
-                    </tr>
-                    <tr>
-                      <td>Frontend Developer</td>
-                      <td>Llanes, Navin</td>
-                      <td align="right"></td>
-                    </tr>
-                    <tr>
-                      <td>Frontend Developer</td>
-                      <td>Casimsiman, Emman</td>
-                      <td align="right"></td>
-                    </tr>
-                  </tbody>
-                </table>
+            {/* ── RIGHT HALF — click goes to next spread ── */}
+            <div
+              className={`book__page book__page--right${
+                canGoNext && !animating ? ' book__page--clickable book__page--clickable-right' : ''
+              }`}
+              onClick={() => canGoNext && !animating && flipTo(spread + 1)}
+            >
+              {spread === 1 ? (
+                <div className="page__content">
+                  <h1 className="page__content-book-title">
+                    Welcome to<br />LIBR-A.I-RY
+                  </h1>
+                  <h2 className="page__content-author">Library Management System</h2>
+                  <p className="page__content-credits">
+                    Research by
+                    <span>Casimsiman</span>
+                    <span>Llanes</span>
+                    <span>Macapagal</span>
+                  </p>
+                  <p className="page__content-credits">
+                    Section <span>C331_CS</span>
+                  </p>
+                  <div className="page__content-copyright">
+                    <p>A.I Library System Management</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="page__content page__content--rules">
+                  <h1 className="rules-page-title">Library Rules</h1>
+                  <div className="rules-page-subtitle">Part 2 of 2</div>
+                  <div className="rules-page-divider" />
+                  <ul className="rules-page-list">
+                    {rulesPage2.map((rule, i) => <li key={i}>{rule}</li>)}
+                  </ul>
+                  <div className="rules-page-notice">
+                    ⚠️ Late returns, damaged books, plagiarism, or misuse may result
+                    in penalties or account restriction.
+                  </div>
+                  <div className="page__number">3</div>
+                </div>
+              )}
 
-                <div className="page__number">2</div>
-              </div>
+              {/* Right hover arrow — only shown when there's a next page */}
+              {canGoNext && !animating && (
+                <div className="page-hover-arrow page-hover-arrow--right">›</div>
+              )}
             </div>
-          </label>
+
+            {/* Flip animation overlay */}
+            <div
+              className={`flip-overlay${animating ? ' flip-overlay--active' : ''} ${
+                spread === 1 ? 'flip-overlay--forward' : 'flip-overlay--back'
+              }`}
+            />
+          </div>
+
+          {/* Page dots — below the book, no buttons */}
+          <div className="book-dots">
+            {Array.from({ length: TOTAL_SPREADS }, (_, i) => (
+              <span
+                key={i}
+                className={`book-dot${spread === i + 1 ? ' active' : ''}`}
+                onClick={() => flipTo(i + 1)}
+              />
+            ))}
+          </div>
+
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default Home;

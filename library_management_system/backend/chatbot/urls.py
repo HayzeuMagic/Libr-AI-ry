@@ -1,8 +1,7 @@
 from django.urls import path
-from .views import chat, related_books
+from . import views
 
 urlpatterns = [
-    path("chat/", chat, name="chat"),
-    path('related-books/', related_books, name='related-books'),
-    
+    path('chat/', views.chat, name='chat'),
+    path('related-books/', views.related_books, name='related_books'),
 ]

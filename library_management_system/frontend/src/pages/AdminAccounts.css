@@ -1,0 +1,311 @@
+/* ═══════════════════════════════════════════
+   ADMIN ACCOUNTS — Blue-Slate Theme
+═══════════════════════════════════════════ */
+
+:root {
+  --ad-blue-dark:    #1e3a5f;
+  --ad-blue-mid:     #2c5282;
+  --ad-blue-accent:  #3182ce;
+  --ad-blue-light:   #ebf4ff;
+  --ad-blue-border:  rgba(49, 130, 206, 0.2);
+  --ad-surface:      #f0f4f8;
+  --ad-card:         #ffffff;
+  --ad-text:         #1a202c;
+  --ad-muted:        #4a5568;
+  --ad-faint:        #718096;
+  --ad-red:          #e53e3e;
+  --ad-orange:       #dd6b20;
+  --ad-green:        #276749;
+  --ad-radius:       12px;
+  --ad-radius-btn:   999px;
+  --ad-transition:   0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.admin-accounts {
+  height: 100%;
+  background: var(--ad-surface);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--ad-text);
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-left: 50px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.admin-accounts .accounts-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.5rem;
+  border-radius: var(--ad-radius);
+  background: var(--ad-card);
+  border: 1px solid var(--ad-blue-border);
+  box-shadow:
+    0 2px 8px rgba(100, 116, 139, 0.10),
+    0 6px 24px rgba(100, 116, 139, 0.08);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.admin-accounts .accounts-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ad-blue-dark);
+}
+
+.admin-accounts .accounts-subtitle {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--ad-faint);
+}
+
+.admin-accounts .accounts-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.admin-accounts .card {
+  background: var(--ad-card);
+  border-radius: var(--ad-radius);
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--ad-blue-border);
+  box-shadow:
+    0 2px 8px rgba(100, 116, 139, 0.10),
+    0 6px 24px rgba(100, 116, 139, 0.07);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.admin-accounts .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.admin-accounts .card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ad-blue-dark);
+}
+
+.admin-accounts .card-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--ad-faint);
+}
+
+.admin-accounts .upload-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-accounts .file-input {
+  padding: 8px 10px;
+  border: 1px solid var(--ad-blue-border);
+  border-radius: 10px;
+  background: var(--ad-blue-light);
+  color: var(--ad-blue-dark);
+  font-size: 0.8rem;
+}
+
+.admin-accounts .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--ad-radius-btn);
+  border: none;
+  background: var(--ad-blue-accent);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(49, 130, 206, 0.22);
+  transition:
+    background var(--ad-transition),
+    transform var(--ad-transition),
+    box-shadow var(--ad-transition);
+}
+
+.admin-accounts .btn-primary:hover:not(:disabled) {
+  background: var(--ad-blue-mid);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(49, 130, 206, 0.28);
+}
+
+.admin-accounts .btn-primary:disabled {
+  background: var(--ad-faint);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.admin-accounts .message-box {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  background: #edf7ed;
+  border: 1px solid rgba(39, 103, 73, 0.18);
+  color: var(--ad-green);
+  font-size: 0.8rem;
+}
+
+.admin-accounts .errors-box {
+  margin-top: 0.85rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 10px;
+  background: #fff5f5;
+  border: 1px solid rgba(229, 62, 62, 0.18);
+}
+
+.admin-accounts .errors-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ad-red);
+}
+
+.admin-accounts .errors-list {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--ad-red);
+  font-size: 0.78rem;
+}
+
+.admin-accounts .errors-list li + li {
+  margin-top: 0.3rem;
+}
+
+.admin-accounts .table-container {
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid rgba(49, 130, 206, 0.15);
+  min-height: 0;
+}
+
+.admin-accounts .users-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  background: var(--ad-card);
+  table-layout: auto;
+}
+
+.admin-accounts .users-table thead {
+  background: var(--ad-blue-light);
+}
+
+.admin-accounts .users-table th,
+.admin-accounts .users-table td {
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-accounts .users-table th {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ad-blue-mid);
+  border-bottom: 1px solid var(--ad-blue-border);
+  white-space: nowrap;
+}
+
+.admin-accounts .users-table tbody tr:nth-child(even) {
+  background: #f7faff;
+}
+
+.admin-accounts .users-table tbody tr:hover {
+  background: var(--ad-blue-light);
+}
+
+.admin-accounts .user-name {
+  font-weight: 600;
+  color: var(--ad-blue-dark);
+}
+
+.admin-accounts .user-email {
+  color: var(--ad-muted);
+}
+
+.admin-accounts .role-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  border-radius: var(--ad-radius-btn);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-accounts .role-admin {
+  background: #e0f2fe;
+  color: #075985;
+  border: 1px solid #7dd3fc;
+}
+
+.admin-accounts .role-user {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
+.admin-accounts .empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--ad-faint);
+}
+
+.admin-accounts .loading-state,
+.admin-accounts .error-state {
+  padding: 1rem 0;
+  color: var(--ad-faint);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .admin-accounts {
+    padding: 0.75rem;
+  }
+
+  .admin-accounts .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-accounts .upload-form {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-accounts .file-input,
+  .admin-accounts .btn-primary {
+    width: 100%;
+  }
+}

@@ -3,12 +3,11 @@
   display: flex;
   min-height: 35vh;
   max-width: 900px;
-  margin: 120px auto 0;  /* ito ang magpapa-“floating” sa gitna */
-  border-radius: 24px;        /* rounded corners */
-  overflow: hidden;           /* para sumunod ang laman sa curve */
-  box-shadow: 0 20px 40px rgba(0,0,0,0.15); /* optional, para card effect */
+  margin: 120px auto 0;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.25);
 }
-
 
 /* Left (Form) Side */
 .register-left {
@@ -16,7 +15,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  background: #fff;
+  background: #f5f3ef;          /* ← warm off-white */
   padding-top: 20px;
 }
 
@@ -28,16 +27,16 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #315a39, #97cf8a 80%);
-  color: #fff;
+  background: linear-gradient(135deg, #3d5f72 0%, #6b8fa0 80%); /* ← slate blue */
+  color: #f0ece4;
   padding: 40px;
 }
 
 .register-left,
 .register-right {
-  width: 200px;                /* Limit width of both cards */
-  min-width: 320px;            
-  max-width: 90vw;             /* Responsive fallback */
+  width: 200px;
+  min-width: 320px;
+  max-width: 90vw;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -49,9 +48,9 @@
   width: 100%;
   margin: 0 auto;
   padding: 40px 32px;
-  box-shadow: 0 8px 32px 0 rgba(31,30,41,0.10);
+  box-shadow: 0 8px 32px 0 rgba(31, 30, 41, 0.10);
   border-radius: 60px;
-  background: #fff;
+  background: #f5f3ef;          /* ← warm off-white */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -70,7 +69,7 @@
   font-size: 2rem;
   font-weight: bold;
   margin-bottom: 28px;
-  color: #232323;
+  color: #2c3e50;               /* ← dark slate */
 }
 
 /* Input Fields */
@@ -83,7 +82,7 @@
   border: none;
   border-radius: 6px;
   font-size: 16px;
-  background: #f4f4fa;
+  background: #e8e4dd;          /* ← warm grey input */
   transition: box-shadow 0.3s, border 0.3s;
   display: block;
   margin-left: auto;
@@ -92,28 +91,23 @@
 
 .register-form input:focus {
   outline: none;
-  box-shadow: 0 0 5px #a8e6cf;
-  border: 1px solid #a8e6cf;
+  box-shadow: 0 0 5px #7a9aaa;
+  border: 1px solid #7a9aaa;    /* ← slate blue focus */
 }
 
 /* Button Styling */
 .register-form button {
   position: relative;
   background: #ffffff;
-  color: #315a39;
+  color: #3d5f72;               /* ← slate blue text */
   padding: 10px 32px;
-  border-radius: 999px;          /* pill shape */
+  border-radius: 999px;
   border: 2px solid #ffffff;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 10px rgba(0,0,0,0.15);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-
-.register-form button:hover {
-  background: #ffffff;
-  transform: translateY(-2px);
 }
 
 .register-form button:active {
@@ -125,35 +119,30 @@
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: -1px;                 /* layo sa text */
+  bottom: -1px;
   height: 3px;
   border-radius: 999px;
-  background: #ffffff;         /* underline color */
+  background: #c9aa71;          /* ← gold underline */
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform 0.25s ease;
 }
 
 .register-form button:hover {
-  background: #315a39;   /* pill becomes green */
-  color: #ffffff;        /* text becomes white */
+  background: #3d5f72;          /* ← slate blue fill */
+  color: #ffffff;
   transform: translateY(-2px);
   box-shadow: 0 6px 14px rgba(0,0,0,0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
 }
 
 .register-form button:hover::after {
-  transform: scaleX(1);        /* lalabas yung underline */
+  transform: scaleX(1);
 }
-
-
 
 .big-logo {
   width: 300px;
   margin-bottom: 5px;
 }
-/* Login button */
 
 .promo-title {
   font-size: 2.5rem;
@@ -165,21 +154,13 @@
   margin-top: 32px;
   padding: 16px 32px;
   font-size: 1.2rem;
-  border: 2px solid #fff;
+  border: 2px solid #f0ece4;
   background: transparent;
-  color: #ffffff;
+  color: #f0ece4;
   border-radius: 32px;
   cursor: pointer;
   transition: all 0.3s ease;
-}
-
-.promo-button:hover {
-  background: #ffffff;
-  transform: translateY(-2px);
-}
-
-.promo-button:active {
-  transform: translateY(1px);
+  position: relative;
 }
 
 .promo-button::after {
@@ -187,29 +168,27 @@
   position: absolute;
   left: 22px;
   right: 20px;
-  bottom: -1px;                 /* layo sa text */
+  bottom: -1px;
   height: 3px;
   border-radius: 999px;
-  background: #ffffff;         /* underline color */
+  background: #c9aa71;          /* ← gold underline */
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform 0.25s ease;
 }
 
 .promo-button:hover {
-  background: #315a39;   /* pill becomes green */
-  color: #ffffff;        /* text becomes white */
+  background: #2c4a5a;          /* ← deeper slate */
+  color: #f0ece4;
   transform: translateY(-2px);
   box-shadow: 0 6px 14px rgba(0,0,0,0.2);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
 }
 
 .promo-button:hover::after {
-  transform: scaleX(1);        /* lalabas yung underline */
+  transform: scaleX(1);
 }
 
-/* Social Section (below form) */
+/* Social Section */
 .social-section {
   margin-top: 24px;
   width: 100%;
@@ -219,7 +198,7 @@
   color: #555;
 }
 
-/* Divider line + text */
+/* Divider */
 .social-divider {
   display: flex;
   align-items: center;
@@ -232,13 +211,13 @@
   content: "";
   flex: 1;
   height: 1px;
-  background: #ccc;
+  background: #c5bfb5;          /* ← warm grey */
 }
 
 .social-divider span {
   white-space: nowrap;
   font-size: 14px;
-  color: #666;
+  color: #7a7267;
 }
 
 /* Icons row */
@@ -252,50 +231,46 @@
 }
 
 .social-icons a {
-  color: #000;
+  color: #2c3e50;
   text-decoration: none;
   transition: color 0.3s;
 }
 
 .social-icons a:hover {
-  color: #315a39;
+  color: #3d5f72;               /* ← slate blue */
 }
 
 /* Copyright */
 .copyright {
   font-size: 12px;
-  color: #999;
+  color: #9e9890;
   margin-top: 8px;
 }
 
-/* show pass */
-/* base style for all inputs in the form */
+/* Password wrapper */
 .register-form input {
   width: 100%;
   padding: 12px 16px;
   border-radius: 8px;
-  border: 1px solid #e0e0e0;
-  background: #f8f8ff;
+  border: 1px solid #d0cbc3;    /* ← warm grey border */
+  background: #e8e4dd;
   font-size: 14px;
   outline: none;
   box-sizing: border-box;
 }
-/* password */
 
 .password-wrapper {
   position: relative;
   width: 100%;
 }
 
-/* keep space for icon inside */
 .password-input {
   padding-right: 40px;
 }
 
-/* pull icon further inside the input */
 .toggle-password {
   position: absolute;
-  right: 40px;          /* smaller = more inside */
+  right: 40px;
   top: 36%;
   transform: translateY(-50%);
   border: none;
@@ -303,33 +278,28 @@
   padding: 0;
   margin: 0;
   cursor: pointer;
-  color: #000000;
+  color: #4a6274;               /* ← slate */
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;      /* shrink or grow icon */
+  font-size: 14px;
 }
 
-/* hover */
-
-/* hover color for icon */
 .toggle-password:hover {
-  color: #01b12d;
+  color: #3d5f72;               /* ← darker slate */
 }
 
-/* messages under field */
+/* Validation messages */
 .field-error {
-  color: #e53935;
+  color: #c0392b;
   font-size: 0.85rem;
   margin-top: 4px;
 }
 
 .account-message.error {
-  color: #e53935;
+  color: #c0392b;
 }
 
 .account-message.success {
-  color: #2e7d32;
+  color: #2c6e8a;               /* ← slate blue success */
 }
-
-
