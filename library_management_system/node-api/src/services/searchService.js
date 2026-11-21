@@ -5,7 +5,7 @@ async function logSearch({ userId, queryText, bookId, resultCount, clicked }) {
   try {
     const [result] = await conn.execute(
       `INSERT INTO search_history (user_id, query_text, book_id, searched_at, result_count, clicked)
-       VALUES (?, ?, ?, NOW(), ?, ?)`,
+       VALUES (?, ?, ?, UTC_TIMESTAMP(), ?, ?)`,
       [
         userId || null,
         queryText,
