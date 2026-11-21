@@ -195,6 +195,7 @@ const Header = () => {
               {navLink('/books', '📖', 'Our Books')}
               {navLink('/borrowed', '🔖', 'Borrowed Books')}
               {navLink('/ebooks', '📘', 'E-Books')}
+              {navLink('/statistics', '📊', 'Statistics')}
             </>
           )}
 
@@ -204,6 +205,7 @@ const Header = () => {
               {navLink('/books', '📖', 'Our Books')}
               {navLink('/admin', '⚙️', 'Manage Books', true)}
               {navLink('/admin/accounts', '👥', 'Manage Users')}
+              {navLink('/statistics', '📊', 'Statistics')}
             </>
           )}
         </nav>
@@ -223,6 +225,3 @@ const Header = () => {
 };
 
 export default Header;
-
-
-// {navLink('/statistics', '📊', 'Statistics')}

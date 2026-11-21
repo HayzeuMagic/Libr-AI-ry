@@ -13,6 +13,7 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [exporting, setExporting] = useState(false);
   const [returningId, setReturningId] = useState(null);
+  const [stats, setStats] = useState({ total: 0, borrowed: 0, overdue: 0, returned: 0 });
 
   const [payments, setPayments] = useState([]);
   const [confirmingId, setConfirmingId] = useState(null);
@@ -41,6 +42,7 @@ const AdminDashboard = () => {
 
       setReservations(results);
       setTotalPages(res.data?.total_pages || 1);
+      if (res.data?.stats) setStats(res.data.stats);
       setError(null);
     } catch (err) {
       setError('Failed to load reservations. Please try again later.');
@@ -233,6 +235,7 @@ const AdminDashboard = () => {
 
       const today = new Date().toISOString().slice(0, 10);
 
+      loadReservations();
       setReservations((prev) =>
         prev.map((r) =>
           r.id === reservation.id
@@ -260,6 +263,7 @@ const AdminDashboard = () => {
 
       setPayments((prev) => prev.filter((p) => p.payment_id !== paymentId));
       setPaidReservationIds((prev) => new Set([...prev, reservationId]));
+      loadReservations();
 
       const today = new Date().toISOString().slice(0, 10);
 
@@ -387,7 +391,7 @@ const AdminDashboard = () => {
               </svg>
             </div>
             <div className="stat-text">
-              <h3 className="stat-value">{reservations.length}</h3>
+              <h3 className="stat-value">{stats.total}</h3>
               <p className="stat-label">Total Reservations</p>
             </div>
           </div>
@@ -410,9 +414,7 @@ const AdminDashboard = () => {
               </svg>
             </div>
             <div className="stat-text">
-              <h3 className="stat-value">
-                {reservations.filter((r) => r.status === 'borrowed').length}
-              </h3>
+              <h3 className="stat-value">{stats.borrowed}</h3>
               <p className="stat-label">Currently Borrowed</p>
             </div>
           </div>
@@ -435,13 +437,7 @@ const AdminDashboard = () => {
               </svg>
             </div>
             <div className="stat-text">
-              <h3 className="stat-value">
-                {
-                  reservations.filter(
-                    (r) => (!r.return_date && r.overdue_unreturned) || r.status === 'overdue'
-                  ).length
-                }
-              </h3>
+              <h3 className="stat-value">{stats.overdue}</h3>
               <p className="stat-label">Overdue Books</p>
             </div>
           </div>
@@ -464,9 +460,7 @@ const AdminDashboard = () => {
               </svg>
             </div>
             <div className="stat-text">
-              <h3 className="stat-value">
-                {reservations.filter((r) => r.status === 'returned').length}
-              </h3>
+              <h3 className="stat-value">{stats.returned}</h3>
               <p className="stat-label">Returned Books</p>
             </div>
           </div>

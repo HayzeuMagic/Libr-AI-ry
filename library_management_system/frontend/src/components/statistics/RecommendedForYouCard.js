@@ -1,19 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { fetchUserRecommendations } from '../../services/statisticsApi';
 
-const TEST_USER_ID = 17;
+const getCurrentUserId = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')?.id ?? null;
+  } catch {
+    return null;
+  }
+};
 
 function RecommendedForYouCard() {
-  const [data, setData] = useState({ items: [], userId: TEST_USER_ID, limit: 5 });
+  const userId = getCurrentUserId();
+  const [data, setData] = useState({ items: [], userId, limit: 5 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     async function load() {
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
         const result = await fetchUserRecommendations({
-          userId: TEST_USER_ID,
+          userId,
           limit: 5,
         });
         setData(result);
@@ -26,7 +37,7 @@ function RecommendedForYouCard() {
       }
     }
     load();
-  }, []);
+  }, [userId]);
 
   if (loading) {
     return (
@@ -63,13 +74,12 @@ function RecommendedForYouCard() {
     <div className="statistics-card">
       <h2>Recommended For You</h2>
       <div className="statistics-card-content">
-        {topItem.imageUrl && (
-          <img
-            src={topItem.imageUrl}
-            alt={topItem.title}
-            className="statistics-card-image"
-          />
-        )}
+        <img
+          src={topItem.coverUrl || '/lib.png'}
+          alt={topItem.title}
+          className="statistics-card-image"
+          onError={(e) => { e.target.src = '/lib.png'; }}
+        />
         <div className="statistics-card-list">
           <ul>
             {data.items.map((item) => (
