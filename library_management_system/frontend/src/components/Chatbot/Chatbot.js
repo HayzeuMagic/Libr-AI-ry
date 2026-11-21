@@ -19,8 +19,12 @@ const Chatbot = () => {
 
   const chatStreamRef = useRef(null);
 
-  const storedUser = localStorage.getItem('user');
-  const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+  let parsedUser = null;
+  try {
+    parsedUser = JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    parsedUser = null;
+  }
   const storageKey = parsedUser
     ? `libraryChatSessions_${parsedUser.username || parsedUser.id}`
     : 'libraryChatSessions_guest';
@@ -95,11 +99,16 @@ const Chatbot = () => {
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      const list = JSON.parse(saved).slice(-MAX_SESSIONS);
+    let list = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      list = Array.isArray(saved) ? saved.slice(0, MAX_SESSIONS) : [];
+    } catch {
+      list = [];
+    }
+    if (list.length > 0) {
       setSessions(list);
-      if (list.length > 0) setActiveSessionId(list[0].id);
+      setActiveSessionId(list[0].id);
     } else {
       createNewSession();
     }
@@ -166,16 +175,20 @@ const Chatbot = () => {
 
   const deleteCurrentChat = useCallback(() => {
     if (!activeSessionId) return;
-    setSessions(prev => {
-      const rest = prev.filter(s => s.id !== activeSessionId);
-      setActiveSessionId(rest.length > 0 ? rest[0].id : null);
-      setShowHistory(false);
-      setInputValue('');
-      setSelectedBook(null);
-      setBorrowedCount(0);
-      return rest;
-    });
-  }, [activeSessionId]);
+    const rest = sessions.filter(s => s.id !== activeSessionId);
+    if (rest.length === 0) {
+      // Never leave the user with zero chats (the input would stay disabled).
+      setSessions([]);
+      createNewSession();
+      return;
+    }
+    setSessions(rest);
+    setActiveSessionId(rest[0].id);
+    setShowHistory(false);
+    setInputValue('');
+    setSelectedBook(null);
+    setBorrowedCount(0);
+  }, [activeSessionId, sessions, createNewSession]);
 
   const appendUserMessage = (text) => {
     const userMsgId = Date.now();
