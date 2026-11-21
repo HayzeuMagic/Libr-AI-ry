@@ -30,7 +30,11 @@ def bulk_create_users(request):
         return Response({'error': 'Invalid CSV file.'}, status=status.HTTP_400_BAD_REQUEST)
 
     required_fields = {'name', 'email'}
-    fieldnames = {f.strip().lower() for f in reader.fieldnames} if reader.fieldnames else set()
+    if reader.fieldnames:
+        # Normalise headers so "Name,Email" works the same as "name,email"
+        # (the check below was case-insensitive but the row lookups were not).
+        reader.fieldnames = [(f or '').strip().lower() for f in reader.fieldnames]
+    fieldnames = set(reader.fieldnames or [])
 
     if not fieldnames or not required_fields.issubset(fieldnames):
         return Response(
