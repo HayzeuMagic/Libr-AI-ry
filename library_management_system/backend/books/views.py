@@ -1,23 +1,29 @@
-from datetime import timedelta
-
-from django.utils import timezone
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.response import Response
 
-from reservations.models import Reservation
-from reservations.serializers import ReservationSerializer
 from books.models import Book, UserEBookCollection
 from books.serializers import BookSerializer
-from books.ai_recommender import get_recommendations
+
+# The catalogue has ~200k rows; never serialise all of them in one response.
+DEFAULT_LIMIT = 200
+MAX_LIMIT = 500
+
+
+def get_limit(request, default=DEFAULT_LIMIT):
+    try:
+        limit = int(request.GET.get('limit', default))
+    except (TypeError, ValueError):
+        limit = default
+    return max(1, min(limit, MAX_LIMIT))
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def book_list(request):
-    books = Book.objects.all()
+    books = Book.objects.order_by('id')[:get_limit(request)]
     serializer = BookSerializer(books, many=True)
     return Response(serializer.data)
 
@@ -43,76 +49,15 @@ def book_detail(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def reserve_book(request):
-    book_id = request.data.get('book_id')
-    if not book_id:
-        return Response({'error': 'Missing book_id'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        book = Book.objects.get(id=book_id)
-    except Book.DoesNotExist:
-        return Response({'error': 'Book not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    if book.is_ebook:
-        return Response(
-            {'error': 'E-books cannot be borrowed physically. Add them to your collection instead.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    active_count = Reservation.objects.filter(
-        user=request.user,
-        status='borrowed'
-    ).count()
-
-    if active_count >= 3:
-        return Response(
-            {
-                'error': 'borrow_limit',
-                'message': (
-                    f'You already have {active_count} borrowed book(s). '
-                    f'Please return one before borrowing more.'
-                )
-            },
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    already_borrowed = Reservation.objects.filter(
-        user=request.user,
-        book=book,
-        status='borrowed'
-    ).exists()
-
-    if already_borrowed:
-        return Response(
-            {'error': 'You have already borrowed this book.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    if book.available_count <= 0:
-        return Response({'error': 'Book not available'}, status=status.HTTP_400_BAD_REQUEST)
-
-    reservation = Reservation.objects.create(
-        user=request.user,
-        book=book,
-        due_date=timezone.now() + timedelta(days=7)
-    )
-
-    book.available_count = max(book.available_count - 1, 0)
-    book.save()
-
-    serializer = ReservationSerializer(reservation)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def add_to_collection(request):
     book_id = request.data.get('book_id')
     if not book_id:
         return Response({'error': 'Missing book_id'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        book = Book.objects.get(id=book_id, is_ebook=True)
+        book = Book.objects.get(id=int(book_id), is_ebook=True)
+    except (TypeError, ValueError):
+        return Response({'error': 'book_id must be a number'}, status=status.HTTP_400_BAD_REQUEST)
     except Book.DoesNotExist:
         return Response({'error': 'E-book not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -137,76 +82,23 @@ def add_to_collection(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def reservation_history(request):
-    reservations = Reservation.objects.filter(
-        user=request.user
-    ).order_by('-borrow_date')
-    serializer = ReservationSerializer(reservations, many=True)
-    return Response(serializer.data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def return_book(request, pk):
-    try:
-        reservation = Reservation.objects.get(
-            pk=pk,
-            user=request.user,
-            status='borrowed'
-        )
-    except Reservation.DoesNotExist:
-        return Response(
-            {'error': 'Reservation not found'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-    reservation.return_date = timezone.now()
-    reservation.status = (
-        'returned' if reservation.return_date <= reservation.due_date
-        else 'overdue'
-    )
-    reservation.save()
-
-    book = reservation.book
-    book.available_count = min(book.available_count + 1, book.stock)
-    book.save()
-
-    serializer = ReservationSerializer(reservation)
-    return Response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_recommendations_api(request):
-    query = request.GET.get('query', '')
-    user_id = request.user.id
-    recs = get_recommendations(user_id, query)
-    return Response(recs)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def all_reservations(request):
-    reservations = Reservation.objects.all().order_by('-borrow_date')
-    serializer = ReservationSerializer(reservations, many=True)
-    return Response(serializer.data)
-
-
-@api_view(['GET'])
 @permission_classes([AllowAny])
 def search_books(request):
     query = request.GET.get('q', '').strip()
     isbn = request.GET.get('isbn', '').strip()
     category = request.GET.get('category', 'all').strip()
     ebook = request.GET.get('ebook', '').strip().lower()
+    limit = get_limit(request)
 
     books = Book.objects.all()
+
+    if ebook == 'true':
+        books = books.filter(is_ebook=True)
 
     if isbn:
         isbn_clean = isbn.replace('-', '').replace(' ', '')
         books = books.filter(isbn__iexact=isbn_clean)
-        serializer = BookSerializer(books, many=True)
+        serializer = BookSerializer(books[:limit], many=True)
         return Response(serializer.data)
 
     if query:
@@ -225,11 +117,11 @@ def search_books(request):
                 Q(author__icontains=query) |
                 Q(genre__icontains=query)
             )
+    elif ebook != 'true':
+        # An empty search used to return the whole 200k-book catalogue.
+        return Response([])
 
-    if ebook == 'true':
-        books = books.filter(is_ebook=True)
-
-    serializer = BookSerializer(books, many=True)
+    serializer = BookSerializer(books.order_by('id')[:limit], many=True)
     return Response(serializer.data)
 
 
