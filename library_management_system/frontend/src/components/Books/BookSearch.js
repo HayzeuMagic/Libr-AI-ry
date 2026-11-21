@@ -145,14 +145,17 @@ const BookSearch = () => {
   const loadBorrowedBooks = useCallback(async () => {
     if (isAdmin) { setBorrowedBooks([]); return; }
     try {
-      const res  = await api.get('/reservations/my-books/');
+      // /reservations/history/ returns this user's active (borrowed/overdue) loans.
+      const res  = await api.get('/reservations/history/');
       const data = Array.isArray(res.data) ? res.data : res.data?.results ?? [];
-      setBorrowedBooks(data);
+      setBorrowedBooks(
+        data.map((r) => ({ book_id: r.book, user_id: currentUserId, return_date: r.return_date }))
+      );
     } catch (error) {
       console.error('Failed to load borrowed books:', error);
       setBorrowedBooks([]);
     }
-  }, [isAdmin]);
+  }, [isAdmin, currentUserId]);
 
   useEffect(() => { loadBorrowedBooks(); }, [loadBorrowedBooks]);
 
@@ -305,6 +308,20 @@ const BookSearch = () => {
     }
   };
 
+  /* ── e-books go to the reader collection, not a physical loan ── */
+  const handleAddEbook = async (book) => {
+    try {
+      const res = await api.post('/books/add-to-collection/', { book_id: book.id });
+      setModalMessage(res.data?.message || 'E-book added to your collection.');
+    } catch (error) {
+      setModalMessage(
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        'Could not add this e-book to your collection.'
+      );
+    }
+  };
+
   /* ── clear ── */
   const handleClear = () => {
     setQuery('');
@@ -387,7 +404,7 @@ const BookSearch = () => {
           <button
             className={`ebook-toggle${ebookOnly ? ' active' : ''}`}
             onClick={() => setEbookOnly((v) => !v)}
-            title="E-book filter — coming soon"
+            title="Show only e-books"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -395,7 +412,6 @@ const BookSearch = () => {
               <path d="M8 21h8M12 17v4" />
             </svg>
             E-books
-            <span className="ebook-coming-soon">Soon</span>
           </button>
         </div>
 
@@ -512,6 +528,10 @@ const BookSearch = () => {
 
                     {isAdmin ? (
                       <button onClick={() => handleEdit(book)} className="reserve-btn edit-btn">Edit</button>
+                    ) : book.is_ebook ? (
+                      <button onClick={() => handleAddEbook(book)} className="reserve-btn">
+                        Add to My E-Books
+                      </button>
                     ) : (
                       <button
                         onClick={() => handleReserve(book)}

@@ -15,7 +15,22 @@ from books.models import Book
 from reservations.models import Reservation
 
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY"))
+_client = None
+
+
+def get_openai_client():
+    """
+    Create the OpenAI client lazily. Building it at import time crashed the
+    whole Django project (every URL, migrate, runserver) whenever no API key
+    was configured.
+    """
+    global _client
+    api_key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    if _client is None:
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 
 def parse_book_suggestion(reply: str):
@@ -67,13 +82,22 @@ def serialize_book(book):
     }
 
 
+def reservation_line(r):
+    title = r.book.title if r.book else "(deleted book)"
+    borrowed = timezone.localtime(r.borrow_date).date() if r.borrow_date else "-"
+    due = timezone.localtime(r.due_date).date() if r.due_date else "-"
+    return f"{title} ({borrowed} | {due} | {r.status})"
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def chat(request):
     user_message = request.data.get("message")
     history = request.data.get("history", [])
+    if not isinstance(history, list):
+        history = []
 
-    if not user_message:
+    if not isinstance(user_message, str) or not user_message.strip():
         return Response({"error": "Message is required"}, status=status.HTTP_400_BAD_REQUEST)
 
     user = request.user
@@ -116,10 +140,7 @@ def chat(request):
                 for (student_name, email), items in grouped.items():
                     lines.append(f"\n{student_name} ({email}):")
                     for r in items:
-                        lines.append(
-                            f"- {r.book.title} "
-                            f"({r.borrow_date.date()} | {r.due_date.date()} | {r.status})"
-                        )
+                        lines.append(f"- {reservation_line(r)}")
                 admin_reply = "\n".join(lines)
 
         # 2) list students with overdue books
@@ -146,10 +167,7 @@ def chat(request):
                 for (student_name, email), items in grouped.items():
                     lines.append(f"\n{student_name} ({email}):")
                     for r in items:
-                        lines.append(
-                            f"- {r.book.title} "
-                            f"({r.borrow_date.date()} | {r.due_date.date()} | {r.status})"
-                        )
+                        lines.append(f"- {reservation_line(r)}")
                 admin_reply = "\n".join(lines)
 
         # 3) email students with overdue books – generate email text
@@ -187,10 +205,7 @@ def chat(request):
                 for (student_name, email), items in grouped.items():
                     recipient_lines.append(f"\n{student_name} ({email}):")
                     for r in items:
-                        recipient_lines.append(
-                            f"- {r.book.title} "
-                            f"({r.borrow_date.date()} | {r.due_date.date()} | {r.status})"
-                        )
+                        recipient_lines.append(f"- {reservation_line(r)}")
 
                 admin_reply = (
                     "A reminder email has been generated and is assumed to have been "
@@ -243,7 +258,7 @@ def chat(request):
             status='borrowed'
         ).select_related('book')[:10]
 
-        borrowed_books = [r.book for r in borrowed_reservations]
+        borrowed_books = [r.book for r in borrowed_reservations if r.book]
         borrowed_ids = [b.id for b in borrowed_books]
 
         borrowed_summary = [f"- {b.title} by {b.author}" for b in borrowed_books]
@@ -442,11 +457,35 @@ def chat(request):
     )
 
     # ------- BUILD MESSAGES WITH HISTORY -------
+    # Only accept user/assistant turns from the client (never "system"), and
+    # drop the trailing copy of the current message: the frontend already
+    # includes it in `history`, so it was being sent to the model twice.
+    clean_history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history
+        if isinstance(m, dict)
+        and m.get("role") in ("user", "assistant")
+        and isinstance(m.get("content"), str)
+        and m["content"].strip()
+    ]
+    if clean_history and clean_history[-1]["role"] == "user"             and clean_history[-1]["content"].strip() == user_message.strip():
+        clean_history.pop()
+
     messages = [{"role": "system", "content": system_prompt}]
-    for msg in history[-20:]:
-        if "role" in msg and "content" in msg:
-            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.extend(clean_history[-20:])
     messages.append({"role": "user", "content": user_message})
+
+    client = get_openai_client()
+    if client is None:
+        return Response({
+            "reply": (
+                "The AI assistant is not configured yet (missing OPENAI_API_KEY), "
+                "so I can only help with books from the library catalogue. "
+                "Try asking me to recommend a book about a topic, e.g. "
+                "\"recommend a book about travel\"."
+            ),
+            "book_suggested": None,
+        })
 
     try:
         completion = client.chat.completions.create(
@@ -464,12 +503,11 @@ def chat(request):
             title_hint = parsed["title"]
             author_hint = parsed["author"]
 
-            book_obj = (
-                Book.objects
-                .filter(title__icontains=title_hint)
-                .filter(author__icontains=author_hint.split()[0])
-                .first()
-            )
+            author_words = author_hint.split()
+            book_qs = Book.objects.filter(title__icontains=title_hint)
+            if author_words:
+                book_qs = book_qs.filter(author__icontains=author_words[0])
+            book_obj = book_qs.first()
 
             if book_obj:
                 book_suggested = serialize_book(book_obj)
@@ -500,18 +538,25 @@ def related_books(request):
         return Response({"error": "book_id is required"}, status=400)
 
     try:
-        base = Book.objects.get(id=book_id)
+        base = Book.objects.get(id=int(book_id))
+    except (ValueError, TypeError):
+        return Response({"error": "book_id must be a number"}, status=400)
     except Book.DoesNotExist:
         return Response({"error": "Book not found"}, status=404)
 
-    qs = (
-        Book.objects.filter(
-            Q(genre__iexact=base.genre) |
-            Q(author__icontains=base.author)
+    # Same-author books first, then fill up with same-genre books.
+    # (An empty author/genre would otherwise match the entire catalogue.)
+    related = []
+    if base.author:
+        related = list(
+            Book.objects.filter(author__iexact=base.author).exclude(id=base.id)[:5]
         )
-        .exclude(id=base.id)
-        .distinct()[:5]
-    )
+    if len(related) < 5 and base.genre:
+        exclude_ids = [base.id] + [b.id for b in related]
+        related += list(
+            Book.objects.filter(genre__iexact=base.genre)
+            .exclude(id__in=exclude_ids)[:5 - len(related)]
+        )
 
-    data = [serialize_book(b) for b in qs]
+    data = [serialize_book(b) for b in related]
     return Response({"related": data})

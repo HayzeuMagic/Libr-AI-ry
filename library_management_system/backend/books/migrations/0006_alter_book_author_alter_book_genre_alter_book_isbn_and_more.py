@@ -15,10 +15,14 @@ class Migration(migrations.Migration):
             name='author',
             field=models.CharField(blank=True, max_length=512),
         ),
-        migrations.AlterField(
+        # No earlier migration creates `genre`, so on a fresh database an
+        # AlterField here fails ("Book has no field named 'genre'").
+        # Databases that already applied this migration are unaffected.
+        migrations.AddField(
             model_name='book',
             name='genre',
-            field=models.CharField(blank=True, max_length=512),
+            field=models.CharField(blank=True, default='', max_length=512),
+            preserve_default=False,
         ),
         migrations.AlterField(
             model_name='book',

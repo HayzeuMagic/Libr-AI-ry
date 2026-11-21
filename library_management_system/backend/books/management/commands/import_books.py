@@ -1,82 +1,97 @@
 import csv
 from pathlib import Path
 
-from django.core.management.base import BaseCommand
-from books.models import Book  # Adjust import if your model location differs
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
+
+from books.models import Book
+
+DEFAULT_CSV = Path(settings.BASE_DIR).parent / 'database' / 'books.csv'
+BATCH_SIZE = 2000
+
+
+def normalize_isbn(raw):
+    """
+    The CSV was exported through a spreadsheet, which dropped leading zeros
+    from numeric ISBN-10s (e.g. 0761183272 -> 761183272). Restore them.
+    """
+    isbn = (raw or '').strip().replace('-', '').replace(' ', '')
+    if isbn.isdigit() and len(isbn) < 10:
+        isbn = isbn.zfill(10)
+    return isbn
+
+
+def parse_stock(raw):
+    try:
+        return max(int(str(raw).strip()), 0)
+    except (TypeError, ValueError):
+        return 0
+
 
 class Command(BaseCommand):
-    help = "Import books from a CSV file into books_book table"
+    help = 'Import (or refresh) books from database/books.csv into the books_book table.'
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--path",
-            required=True,
+            '--path',
             type=str,
-            default="database/books.csv",
-            help="Path to the CSV file relative to backend/ folder",
+            default=str(DEFAULT_CSV),
+            help=f'Path to the CSV file (default: {DEFAULT_CSV})',
         )
 
     def handle(self, *args, **options):
-        csv_path = Path(options["path"])
-
+        csv_path = Path(options['path'])
         if not csv_path.exists():
-            self.stderr.write(self.style.ERROR(f"CSV file not found: {csv_path}"))
-            return
+            raise CommandError(f'CSV file not found: {csv_path}')
 
-        created_count = 0
-        updated_count = 0
+        books = []
+        skipped = 0
+        seen = set()
 
-        with csv_path.open(newline="", encoding="latin1") as f:
+        with csv_path.open(newline='', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
-            header_fields = reader.fieldnames
-            headers_lower = [h.lower() for h in header_fields]
+            # Accept any header capitalisation (the file mixes "Title" and "author").
+            reader.fieldnames = [h.strip().lower() for h in reader.fieldnames]
 
-            for i, row in enumerate(reader, start=1):
-                # Skip rows where all fields are empty or whitespace only
-                if all(not (value and value.strip()) for value in row.values()):
+            for row in reader:
+                isbn = normalize_isbn(row.get('isbn'))
+                title = (row.get('title') or '').strip()
+                if not isbn or not title or isbn in seen:
+                    skipped += 1
                     continue
+                seen.add(isbn)
 
-                # Skip repeated header rows if any appear mid-file
-                values = [value.strip().lower() if value else '' for value in row.values()]
-                if values == headers_lower:
-                    print(f"Skipping repeated header row at line {i}")
-                    continue
+                stock = parse_stock(row.get('stock'))
+                books.append(Book(
+                    isbn=isbn[:32],
+                    title=title[:512],
+                    author=(row.get('author') or '').strip()[:512],
+                    genre=(row.get('genre') or '').strip()[:100],
+                    cover_url=(row.get('cover_url') or '').strip()[:200],
+                    stock=stock,
+                    available_count=stock,
+                ))
 
-                if i % 100 == 0:
-                    print(f"Processing row {i}")
+        self.stdout.write(f'Parsed {len(books)} books ({skipped} rows skipped). Writing to database...')
 
-                book_id = row.get("BookID", "").strip()
+        # Upsert on ISBN (the table's unique key). Existing rows keep their
+        # available_count so that re-running the import never "returns" books
+        # that are still borrowed. MySQL picks the conflicting unique key
+        # itself, so `unique_fields` is only passed on other backends.
+        upsert_kwargs = {
+            'update_conflicts': True,
+            'update_fields': ['title', 'author', 'genre', 'cover_url', 'stock'],
+        }
+        if connection.vendor != 'mysql':
+            upsert_kwargs['unique_fields'] = ['isbn']
 
-                # Skip rows without BookID
-                if not book_id:
-                    continue
+        for start in range(0, len(books), BATCH_SIZE):
+            Book.objects.bulk_create(books[start:start + BATCH_SIZE], **upsert_kwargs)
+            done = min(start + BATCH_SIZE, len(books))
+            if done % 20000 < BATCH_SIZE or done == len(books):
+                self.stdout.write(f'  {done}/{len(books)}')
 
-                defaults = {
-                    "title": row.get("Title", "").strip(),
-                    "author": row.get("Author", "").strip(),
-                    "category": row.get("Genre", "").strip(),  # Adjust field name if needed
-                    # Add other model fields here
-                }
-
-                stock = row.get("Stock", "").strip()
-                if stock.isdigit():
-                    defaults["available"] = bool(int(stock))
-                else:
-                    defaults["available"] = False
-
-                # Change 'isbn' below if your model uses a different unique identifier
-                obj, created = Book.objects.update_or_create(
-                    isbn=book_id,
-                    defaults=defaults,
-                )
-
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
-
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Import finished. Created: {created_count}, Updated: {updated_count}"
-            )
-        )
+        self.stdout.write(self.style.SUCCESS(
+            f'Import finished. {Book.objects.count()} books in the catalogue.'
+        ))

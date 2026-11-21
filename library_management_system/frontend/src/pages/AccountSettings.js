@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import api from '../services/api';
 import './AccountSettings.css';
 
 const AccountSettings = () => {
-  const [user, setUser] = useState(null);
   const [passwords, setPasswords] = useState({
     current_password: '',
     new_password: '',
@@ -34,13 +33,6 @@ const AccountSettings = () => {
     }));
   };
 
-  useEffect(() => {
-    api
-      .get('/auth/me/')
-      .then((res) => setUser(res.data))
-      .catch(() => setUser(null));
-  }, []);
-
   const handleChange = (e) => {
     setPasswords({ ...passwords, [e.target.name]: e.target.value });
     // clear error for that field when user types
@@ -48,12 +40,18 @@ const AccountSettings = () => {
     setMessage('');
   };
 
-  // helper: at least 9 chars and 1 special character
-  const isStrongPassword = (value) => {
-    const hasMinLength = value.length >= 9;
-    const hasSpecialChar = /[^A-Za-z0-9]/.test(value); // at least one non-alphanumeric
-    return hasMinLength && hasSpecialChar;
-  };
+  // Same rules the server enforces (users/serializers.py validate_strong_password).
+  // The old client rule (9 chars + symbol) accepted passwords the server
+  // rejected, which then showed up as "Old password does not match".
+  const isStrongPassword = (value) =>
+    value.length >= 8 &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /\d/.test(value) &&
+    /[^\w\s]/.test(value);
+
+  const PASSWORD_RULE_TEXT =
+    'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number and a symbol.';
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -71,8 +69,7 @@ const AccountSettings = () => {
     const newErrors = {};
 
     if (!isStrongPassword(new_password)) {
-      newErrors.new_password =
-        'Password must be at least 9 characters and contain at least one special character.';
+      newErrors.new_password = PASSWORD_RULE_TEXT;
     }
 
     if (new_password !== confirm_password) {
@@ -86,7 +83,7 @@ const AccountSettings = () => {
     }
 
     try {
-      await api.post('/auth/change-password/', {
+      await api.post('/change-password/', {
         current_password,
         new_password,
       });
@@ -98,11 +95,18 @@ const AccountSettings = () => {
         confirm_password: '',
       });
     } catch (err) {
-      // handle incorrect old password or generic backend error
+      const data = err.response?.data || {};
+      const first = (v) => (Array.isArray(v) ? v[0] : v) || '';
       setErrors((prev) => ({
         ...prev,
-        current_password: 'Old password does not match.',
-        general: 'Failed to change password. Please verify your old password.',
+        current_password: first(data.current_password)
+          ? 'Old password does not match.'
+          : '',
+        new_password: first(data.new_password),
+        general:
+          data.current_password || data.new_password
+            ? ''
+            : 'Failed to change password. Please try again.',
       }));
     }
   };

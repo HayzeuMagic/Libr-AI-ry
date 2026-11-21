@@ -1,58 +1,49 @@
 const pool = require('../config/db');
 
+// Borrows are recorded by the Django backend in `reservations_reservation`.
+// (These queries used to read a `borrow_history` table that never existed.)
+
 async function getMostBorrowed({ days = 7, limit = 10 }) {
-  const conn = await pool.getConnection();
-  try {
-    const daysInt = Number(days) || 7;
-    const limitInt = Number(limit) || 10;
+  const daysInt = Math.max(1, Number(days) || 7);
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 100));
 
-    // Ensure limit is a safe small integer
-    const safeLimit = Math.max(1, Math.min(limitInt, 100));
+  const sql = `
+    SELECT
+      b.id AS bookId,
+      b.title,
+      b.author,
+      b.genre,
+      b.cover_url AS coverUrl,
+      COUNT(*) AS borrowCount
+    FROM reservations_reservation r
+    JOIN books_book b ON r.book_id = b.id
+    WHERE r.borrow_date >= UTC_TIMESTAMP() - INTERVAL ? DAY
+    GROUP BY b.id, b.title, b.author, b.genre, b.cover_url
+    ORDER BY borrowCount DESC, b.title
+    LIMIT ${safeLimit}
+  `;
 
-    const sql = `
-      SELECT 
-        b.id AS bookId,
-        b.title,
-        b.author,
-        b.genre,
-        COUNT(*) AS borrowCount
-      FROM borrow_history bh
-      JOIN books_book b ON bh.book_id = b.id
-      WHERE bh.borrow_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      GROUP BY b.id, b.title, b.author, b.genre
-      ORDER BY borrowCount DESC
-      LIMIT ${safeLimit}
-    `;
-
-    const [rows] = await conn.execute(sql, [daysInt]);
-    return rows;
-  } finally {
-    conn.release();
-  }
+  const [rows] = await pool.execute(sql, [daysInt]);
+  return rows;
 }
 
 async function getUserHistory(userId) {
-  const conn = await pool.getConnection();
-  try {
-    const [rows] = await conn.execute(
-      `SELECT 
-         bh.id AS borrowId,
-         bh.book_id AS bookId,
-         b.title,
-         b.author,
-         bh.borrow_date AS borrowDate,
-         bh.return_date AS returnDate,
-         bh.status
-       FROM borrow_history bh
-       JOIN books_book b ON bh.book_id = b.id
-       WHERE bh.user_id = ?
-       ORDER BY bh.borrow_date DESC`,
-      [userId]
-    );
-    return rows;
-  } finally {
-    conn.release();
-  }
+  const [rows] = await pool.execute(
+    `SELECT
+       r.id AS borrowId,
+       r.book_id AS bookId,
+       b.title,
+       b.author,
+       r.borrow_date AS borrowDate,
+       r.return_date AS returnDate,
+       r.status
+     FROM reservations_reservation r
+     JOIN books_book b ON r.book_id = b.id
+     WHERE r.user_id = ?
+     ORDER BY r.borrow_date DESC`,
+    [userId]
+  );
+  return rows;
 }
 
 module.exports = {

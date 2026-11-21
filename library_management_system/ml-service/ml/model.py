@@ -95,7 +95,8 @@ class RecommendationModel:
 
         recommendations = []
         for idx in top_indices:
-            if scores[idx] == -np.inf:
+            # Skip already-borrowed books and books with no similarity at all.
+            if not scores[idx] > 0:
                 continue
             book_id = self.index_book[idx]
             score = float(scores[idx])
@@ -111,7 +112,9 @@ class RecommendationModel:
             return []
 
         book_idx = self.book_index[book_id]
-        sim_vector = self.item_similarity[book_idx]  # similarity to all other books
+        # Copy: indexing a row returns a view, so writing -inf into it used to
+        # permanently corrupt the similarity matrix for every later request.
+        sim_vector = self.item_similarity[book_idx].copy()
 
         # Exclude itself
         sim_vector[book_idx] = -np.inf
@@ -121,7 +124,8 @@ class RecommendationModel:
 
         recommendations = []
         for idx in top_indices:
-            if sim_vector[idx] == -np.inf:
+            # Skip itself and books nobody borrowed together with this one.
+            if not sim_vector[idx] > 0:
                 continue
             similar_book_id = self.index_book[idx]
             score = float(sim_vector[idx])
