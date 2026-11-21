@@ -1,8 +1,10 @@
 # reservations/views.py
 from datetime import timedelta
 
+from django.db import transaction
+from django.db.models import F, Q
+from django.db.models.functions import Least
 from django.utils import timezone
-from django.db.models import Q
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -23,6 +25,21 @@ from books.ai_recommender import get_recommendations
 
 
 BORROW_LIMIT = 3
+ACTIVE_STATUSES = [Reservation.STATUS_BORROWED, Reservation.STATUS_OVERDUE]
+
+
+def book_title(reservation):
+    # Reservation.book is SET_NULL, so it can be None after a book is deleted.
+    return reservation.book.title if reservation.book else '(deleted book)'
+
+
+def restock(book):
+    """Put one copy back on the shelf without ever exceeding total stock."""
+    if book is None:
+        return
+    Book.objects.filter(pk=book.pk).update(
+        available_count=Least(F('available_count') + 1, F('stock'))
+    )
 
 
 @api_view(['POST'])
@@ -33,14 +50,19 @@ def reserve_book(request):
         return Response({'error': 'Missing book_id'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        book = Book.objects.get(id=book_id)
+        book = Book.objects.get(id=int(book_id))
+    except (TypeError, ValueError):
+        return Response({'error': 'book_id must be a number'}, status=status.HTTP_400_BAD_REQUEST)
     except Book.DoesNotExist:
         return Response({'error': 'Book not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    active_statuses = [
-        getattr(Reservation, 'STATUS_BORROWED', 'borrowed'),
-        getattr(Reservation, 'STATUS_OVERDUE', 'overdue'),
-    ]
+    if book.is_ebook:
+        return Response(
+            {'error': 'E-books cannot be borrowed physically. Add them to your e-book collection instead.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    active_statuses = ACTIVE_STATUSES
 
     # 1) Check stock only
     if getattr(book, "available_count", 0) <= 0:
@@ -77,16 +99,23 @@ def reserve_book(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # 4) Create reservation and decrement stock
-    reservation = Reservation.objects.create(
-        user=request.user,
-        book=book,
-        due_date=timezone.now() + timedelta(days=7),
-        status=getattr(Reservation, 'STATUS_BORROWED', 'borrowed'),
-    )
-
-    book.available_count -= 1
-    book.save()
+    # 4) Decrement stock atomically (two users borrowing the last copy at the
+    #    same moment must not both succeed), then create the reservation.
+    with transaction.atomic():
+        taken = Book.objects.filter(pk=book.pk, available_count__gt=0).update(
+            available_count=F('available_count') - 1
+        )
+        if not taken:
+            return Response(
+                {'error': 'No available book in stock'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reservation = Reservation.objects.create(
+            user=request.user,
+            book=book,
+            due_date=timezone.now() + timedelta(days=7),
+            status=Reservation.STATUS_BORROWED,
+        )
 
     serializer = ReservationSerializer(reservation)
     return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -116,13 +145,15 @@ def return_book(request, pk):
     except Reservation.DoesNotExist:
         return Response({'error': 'Reservation not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    reservation.return_date = timezone.now()
-    reservation.status = getattr(Reservation, 'STATUS_RETURNED', 'returned')
-    reservation.save()
+    # Returning an already-returned reservation used to add another copy to
+    # the shelf every time it was called.
+    if reservation.status not in ACTIVE_STATUSES or reservation.return_date:
+        return Response({'error': 'Book is already returned'}, status=status.HTTP_400_BAD_REQUEST)
 
-    book = reservation.book
-    book.available_count += 1
-    book.save()
+    reservation.return_date = timezone.now()
+    reservation.status = Reservation.STATUS_RETURNED
+    reservation.save()
+    restock(reservation.book)
 
     serializer = ReservationSerializer(reservation)
     return Response(serializer.data)
@@ -157,7 +188,7 @@ def all_reservations(request):
     start = (page - 1) * page_size
     end   = start + page_size
 
-    reservations = qs[start:end]
+    reservations = list(qs.select_related('user', 'book')[start:end])
     serializer   = ReservationSerializer(reservations, many=True)
     data         = list(serializer.data)
 
@@ -169,12 +200,25 @@ def all_reservations(request):
             and obj.due_date < now
         )
 
+    # System-wide counts for the dashboard cards (they previously counted
+    # only the 15 rows on the current page).
+    stats = {
+        'total':    total,
+        'borrowed': Reservation.objects.filter(status=Reservation.STATUS_BORROWED).count(),
+        'returned': Reservation.objects.filter(status=Reservation.STATUS_RETURNED).count(),
+        'overdue':  Reservation.objects.filter(
+            Q(status=Reservation.STATUS_OVERDUE)
+            | Q(status=Reservation.STATUS_BORROWED, return_date__isnull=True, due_date__lt=now)
+        ).count(),
+    }
+
     return Response({
         'results':      data,
         'page':         page,
         'page_size':    page_size,
         'total':        total,
-        'total_pages':  (total + page_size - 1) // page_size,
+        'total_pages':  max(1, (total + page_size - 1) // page_size),
+        'stats':        stats,
     })
 
 
@@ -198,7 +242,7 @@ def admin_borrowers_list(request):
         data.append({
             "student":    r.user.get_full_name() or r.user.username,
             "email":      r.user.email,
-            "book_title": r.book.title,
+            "book_title": book_title(r),
             "borrow_date": r.borrow_date,
             "due_date":   r.due_date,
             "status":     r.status,
@@ -222,27 +266,20 @@ def check_book_availability(request):
         getattr(Reservation, 'STATUS_BORROWED', 'borrowed'),
         getattr(Reservation, 'STATUS_OVERDUE', 'overdue'),
     ]
-    active_res = (
-        Reservation.objects
-        .filter(book=book, status__in=active_statuses)
-        .select_related('user')
-        .first()
-    )
-
     user_has_book = Reservation.objects.filter(
         book=book,
         user=request.user,
         status__in=active_statuses,
     ).exists()
 
+    # A book with several copies is still available while one copy is out.
     data = {
-        'status':        'available' if not active_res else 'unavailable',
-        'book_title':    book.title,
-        'user_has_book': user_has_book,
+        'status':           'available' if book.available_count > 0 else 'unavailable',
+        'book_title':       book.title,
+        'user_has_book':    user_has_book,
+        'available_copies': book.available_count,
+        'total_copies':     max(book.stock, book.available_count),
     }
-
-    if active_res:
-        data['borrower_username'] = active_res.user.username
 
     return Response(data)
 
@@ -280,10 +317,10 @@ def export_reservations_excel(request):
         display_status = "OVERDUE" if is_overdue_unreturned else res.status.capitalize()
 
         ws.cell(row=row, column=1, value=res.user.get_full_name() or res.user.username)
-        ws.cell(row=row, column=2, value=res.book.title)
-        ws.cell(row=row, column=3, value=res.borrow_date.strftime('%Y-%m-%d') if res.borrow_date else "-")
-        ws.cell(row=row, column=4, value=res.due_date.strftime('%Y-%m-%d')    if res.due_date    else "-")
-        ws.cell(row=row, column=5, value=res.return_date.strftime('%Y-%m-%d') if res.return_date else "-")
+        ws.cell(row=row, column=2, value=book_title(res))
+        ws.cell(row=row, column=3, value=timezone.localtime(res.borrow_date).strftime('%Y-%m-%d') if res.borrow_date else "-")
+        ws.cell(row=row, column=4, value=timezone.localtime(res.due_date).strftime('%Y-%m-%d')    if res.due_date    else "-")
+        ws.cell(row=row, column=5, value=timezone.localtime(res.return_date).strftime('%Y-%m-%d') if res.return_date else "-")
         ws.cell(row=row, column=6, value=display_status)
 
         if is_overdue_unreturned:
@@ -308,7 +345,8 @@ def user_notifications(request):
     ]
     reservations = Reservation.objects.filter(
         user=request.user,
-        status__in=active_statuses
+        status__in=active_statuses,
+        book__isnull=False,
     ).select_related('book')
 
     dismissed = set(
@@ -329,9 +367,9 @@ def user_notifications(request):
                     'type':       'overdue',
                     'message':    f'"{r.book.title}" is overdue. Please settle your payments and return the book.',
                     'book_title': r.book.title,
-                    'due_date':   r.due_date.strftime('%Y-%m-%d'),
+                    'due_date':   timezone.localtime(r.due_date).strftime('%Y-%m-%d'),
                 })
-        elif r.due_date and r.due_date.date() == now.date():
+        elif r.due_date and timezone.localtime(r.due_date).date() == timezone.localdate():
             notif_id = f'due-{r.id}'
             if notif_id not in dismissed:
                 notifications.append({
@@ -339,9 +377,9 @@ def user_notifications(request):
                     'type':       'due_today',
                     'message':    f'"{r.book.title}" is due today. Please return it.',
                     'book_title': r.book.title,
-                    'due_date':   r.due_date.strftime('%Y-%m-%d'),
+                    'due_date':   timezone.localtime(r.due_date).strftime('%Y-%m-%d'),
                 })
-        elif r.due_date and r.due_date.date() == (now + timedelta(days=1)).date():
+        elif r.due_date and timezone.localtime(r.due_date).date() == timezone.localdate() + timedelta(days=1):
             notif_id = f'due-soon-{r.id}'
             if notif_id not in dismissed:
                 notifications.append({
@@ -349,7 +387,7 @@ def user_notifications(request):
                     'type':       'due_soon',
                     'message':    f'"{r.book.title}" is due tomorrow. Please prepare to return it.',
                     'book_title': r.book.title,
-                    'due_date':   r.due_date.strftime('%Y-%m-%d'),
+                    'due_date':   timezone.localtime(r.due_date).strftime('%Y-%m-%d'),
                 })
         else:
             notif_id = f'borrowed-{r.id}'
@@ -359,7 +397,7 @@ def user_notifications(request):
                     'type':       'borrowed',
                     'message':    f'"{r.book.title}" has been added to your library.',
                     'book_title': r.book.title,
-                    'due_date':   r.due_date.strftime('%Y-%m-%d') if r.due_date else None,
+                    'due_date':   timezone.localtime(r.due_date).strftime('%Y-%m-%d') if r.due_date else None,
                 })
 
     return Response({'notifications': notifications})
@@ -441,12 +479,9 @@ def admin_return_book(request, pk):
         return Response({'error': 'Book is already returned'}, status=status.HTTP_400_BAD_REQUEST)
 
     reservation.return_date = timezone.now()
-    reservation.status      = getattr(Reservation, 'STATUS_RETURNED', 'returned')
+    reservation.status      = Reservation.STATUS_RETURNED
     reservation.save()
-
-    book = reservation.book
-    book.available_count += 1
-    book.save()
+    restock(reservation.book)
 
     serializer = ReservationSerializer(reservation)
     return Response(serializer.data)
@@ -459,6 +494,9 @@ def submit_payment(request, pk):
         reservation = Reservation.objects.get(pk=pk, user=request.user)
     except Reservation.DoesNotExist:
         return Response({'error': 'Reservation not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if reservation.status not in ACTIVE_STATUSES or reservation.return_date:
+        return Response({'error': 'This book has already been returned.'}, status=status.HTTP_400_BAD_REQUEST)
 
     payment, created = PaymentRequest.objects.get_or_create(
         reservation=reservation,
@@ -500,7 +538,7 @@ def admin_pending_payments(request):
             'reservation_id': r.id,
             'student':        r.user.get_full_name() or r.user.username,
             'email':          r.user.email,
-            'book_title':     r.book.title,
+            'book_title':     book_title(r),
             'borrow_date':    r.borrow_date,
             'due_date':       r.due_date,
             'status':         p.status,
@@ -532,12 +570,9 @@ def admin_confirm_payment(request, payment_id):
     payment.save()
 
     reservation.return_date = timezone.now()
-    reservation.status      = getattr(Reservation, 'STATUS_RETURNED', 'returned')
+    reservation.status      = Reservation.STATUS_RETURNED
     reservation.save()
-
-    book = reservation.book
-    book.available_count += 1
-    book.save()
+    restock(reservation.book)
 
     return Response({'message': 'Payment confirmed and book returned successfully.'})
 
@@ -560,7 +595,7 @@ def admin_pending_renewals(request):
             'reservation_id': r.id,
             'student':        r.user.get_full_name() or r.user.username,
             'email':          r.user.email,
-            'book_title':     r.book.title,
+            'book_title':     book_title(r),
             'borrow_date':    r.borrow_date,
             'due_date':       r.due_date,
             'status':         req.status,
